@@ -1,8 +1,6 @@
 # Docker Compose Formatter
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Go Report Card](https://goreportcard.com/badge/github.com/awsqed/docker-compose-formatter)](https://goreportcard.com/report/github.com/awsqed/docker-compose-formatter)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/awsqed/docker-compose-formatter)](https://golang.org/)
 
 A CLI tool for formatting Docker Compose files with consistent indentation and directive ordering.
 

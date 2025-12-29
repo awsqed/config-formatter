@@ -150,6 +150,15 @@ func (f *TraefikFormatter) sortMappingNode(node *yaml.Node, isTopLevel bool) {
 
 // getKeyOrder returns the sort order for Traefik configuration keys
 // Lower numbers come first
+//
+// Ordering Philosophy:
+// Traefik configuration follows a protocol-layered approach with consistent subsection patterns.
+// Top-level: Static config → EntryPoints → Providers → Dynamic config (http/tcp/udp/tls)
+// Within protocols: Routers (traffic rules) → Services (backends) → Middlewares (transformations)
+//
+// Context-aware ordering: We check top-level maps first when isTopLevel=true, then fall through
+// to subsection maps. This prevents key collisions where "middlewares" exists at both http-level
+// and router-level with different intended orderings.
 func getKeyOrder(key string, isTopLevel bool) int {
 	// Top-level Traefik configuration keys order
 	topLevelOrder := map[string]int{
@@ -180,12 +189,12 @@ func getKeyOrder(key string, isTopLevel bool) int {
 	}
 
 	// HTTP section keys order (http.routers, http.services, etc.)
+	// Based on official Traefik docs: routers, services, middlewares, serversTransports
 	httpOrder := map[string]int{
 		"routers":           1,
 		"services":          2,
 		"middlewares":       3,
-		"models":            4,
-		"serversTransports": 5,
+		"serversTransports": 4,
 	}
 
 	// TCP section keys order
@@ -203,59 +212,85 @@ func getKeyOrder(key string, isTopLevel bool) int {
 	}
 
 	// Router configuration keys order (applies to http/tcp routers)
+	// Based on official docs: entryPoints, rule, priority, service, middlewares, tls, plus newer fields
 	routerOrder := map[string]int{
 		"entryPoints": 1,
 		"rule":        2,
-		"priority":    3,
-		"service":     4,
-		"middlewares": 5,
-		"tls":         6,
+		"ruleSyntax":  3,
+		"priority":    4,
+		"service":     5,
+		"middlewares": 6,
+		"tls":         7,
+		"parentRefs":  8,
+		"observability": 9,
 	}
 
 	// Service configuration keys order
+	// Official service types: loadBalancer, weighted, mirroring, failover, highestRandomWeight
 	serviceOrder := map[string]int{
-		"loadBalancer": 1,
-		"weighted":     2,
-		"mirroring":    3,
-		"failover":     4,
+		"loadBalancer":          1,
+		"weighted":              2,
+		"mirroring":             3,
+		"failover":              4,
+		"highestRandomWeight":   5,
 	}
 
 	// LoadBalancer configuration keys order
+	// Official properties: servers, strategy, healthCheck, passiveHealthCheck, sticky, serversTransport, passHostHeader, responseForwarding
 	loadBalancerOrder := map[string]int{
-		"servers":            1,
-		"healthCheck":        2,
-		"sticky":             3,
-		"serversTransport":   4,
-		"passHostHeader":     5,
-		"responseForwarding": 6,
+		"servers":             1,
+		"strategy":            2,
+		"healthCheck":         3,
+		"passiveHealthCheck":  4,
+		"sticky":              5,
+		"serversTransport":    6,
+		"passHostHeader":      7,
+		"responseForwarding":  8,
 	}
 
 	// Middleware configuration keys order
+	// Organized by middleware type: path modification → filtering → transformation → auth → advanced
 	middlewareOrder := map[string]int{
+		// Path modification middlewares (1-10)
 		"addPrefix":          1,
 		"stripPrefix":        2,
 		"stripPrefixRegex":   3,
 		"replacePath":        4,
 		"replacePathRegex":   5,
-		"chain":              6,
-		"ipWhiteList":        7,
-		"ipAllowList":        8,
-		"headers":            9,
-		"errors":             10,
-		"rateLimit":          11,
-		"redirectRegex":      12,
-		"redirectScheme":     13,
-		"basicAuth":          14,
-		"digestAuth":         15,
-		"forwardAuth":        16,
-		"inFlightReq":        17,
-		"buffering":          18,
-		"circuitBreaker":     19,
-		"compress":           20,
-		"contentType":        21,
-		"grpcWeb":            22,
-		"passTLSClientCert":  23,
-		"retry":              24,
+
+		// Chaining and filtering (10-20)
+		"chain":              10,
+		"ipWhiteList":        11, // Deprecated, kept for backward compatibility
+		"ipAllowList":        12,
+
+		// Headers and errors (20-30)
+		"headers":            20,
+		"errors":             21,
+
+		// Rate limiting and circuit breaking (30-40)
+		"rateLimit":          30,
+		"circuitBreaker":     31,
+		"inFlightReq":        32,
+
+		// Redirects (40-50)
+		"redirectRegex":      40,
+		"redirectScheme":     41,
+
+		// Authentication (50-60)
+		"basicAuth":          50,
+		"digestAuth":         51,
+		"forwardAuth":        52,
+
+		// Content processing (60-70)
+		"buffering":          60,
+		"compress":           61,
+		"contentType":        62,
+		"grpcWeb":            63,
+
+		// TLS and advanced (70-80)
+		"passTLSClientCert":  70,
+		"retry":              71,
+		"plugin":             80, // Custom plugin middleware
 	}
 
 	// Entry point configuration keys order
@@ -300,10 +335,56 @@ func getKeyOrder(key string, isTopLevel bool) int {
 		"http":                      25,
 	}
 
-	// Check which order map to use based on common patterns
-	if order, ok := topLevelOrder[key]; ok {
+	// Check which order map to use based on context
+	// Priority: Check most specific context first, then fall back to generic
+
+	// Only check top-level when actually at top level
+	if isTopLevel {
+		if order, ok := topLevelOrder[key]; ok {
+			return order
+		}
+	}
+
+	// For subsections, check more specific maps first before generic protocol-level maps
+	// This prevents "middlewares" at router-level from matching "middlewares" at http-level
+
+	// Router-specific keys (nested under http.routers.*, tcp.routers.*, etc.)
+	if order, ok := routerOrder[key]; ok {
 		return order
 	}
+
+	// Service-specific keys (nested under http.services.*, tcp.services.*, etc.)
+	if order, ok := serviceOrder[key]; ok {
+		return order
+	}
+
+	// LoadBalancer-specific keys (nested under services.*.loadBalancer)
+	if order, ok := loadBalancerOrder[key]; ok {
+		return order
+	}
+
+	// Middleware-specific keys (nested under http.middlewares.*)
+	if order, ok := middlewareOrder[key]; ok {
+		return order
+	}
+
+	// EntryPoint-specific keys (nested under entryPoints.*)
+	if order, ok := entryPointOrder[key]; ok {
+		return order
+	}
+
+	// TLS-specific keys (nested under tls.*)
+	if order, ok := tlsOrder[key]; ok {
+		return order
+	}
+
+	// Provider-specific keys (nested under providers.*)
+	if order, ok := providerOrder[key]; ok {
+		return order
+	}
+
+	// Protocol-level keys (http, tcp, udp subsections like routers, services, middlewares)
+	// Checked last to avoid overriding more specific nested keys
 	if order, ok := httpOrder[key]; ok {
 		return order
 	}
@@ -311,27 +392,6 @@ func getKeyOrder(key string, isTopLevel bool) int {
 		return order
 	}
 	if order, ok := udpOrder[key]; ok {
-		return order
-	}
-	if order, ok := routerOrder[key]; ok {
-		return order
-	}
-	if order, ok := serviceOrder[key]; ok {
-		return order
-	}
-	if order, ok := loadBalancerOrder[key]; ok {
-		return order
-	}
-	if order, ok := middlewareOrder[key]; ok {
-		return order
-	}
-	if order, ok := entryPointOrder[key]; ok {
-		return order
-	}
-	if order, ok := tlsOrder[key]; ok {
-		return order
-	}
-	if order, ok := providerOrder[key]; ok {
 		return order
 	}
 

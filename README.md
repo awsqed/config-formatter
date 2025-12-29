@@ -1,16 +1,18 @@
-# Docker Compose Formatter
+# Config Formatter
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A CLI tool for formatting Docker Compose files with consistent indentation and directive ordering.
+A modular CLI tool for formatting YAML configuration files with consistent indentation and directive ordering. Currently supports Docker Compose and Traefik configurations.
 
 ## Features
 
+- **Multi-Format Support**: Automatically detects and formats different config types
+  - Docker Compose files
+  - Traefik configuration files
+  - Extensible architecture for adding more formats
+- **Auto-Detection**: Automatically identifies config type based on filename and content
 - **Consistent Indentation**: Configurable space-based indentation (default: 2 spaces)
-- **Consistent Directive Order**: Automatically orders directives according to Docker Compose best practices
-  - Top-level: `version`, `name`, `networks`, `volumes`, `configs`, `secrets`, `services` (services last)
-  - Service-level: `image`, `build`, `container_name`, `environment`, `ports`, `volumes`, `depends_on`, etc.
-- **Service Separation**: Automatically adds empty lines between services for better readability
+- **Smart Directive Ordering**: Format-specific ordering rules for better readability
 - **Comment Preservation**: Comments are preserved in their original positions
 - **Multiple Output Options**: Print to stdout, write to file, or modify in-place
 - **Format Checking**: Verify if files are already formatted
@@ -18,65 +20,76 @@ A CLI tool for formatting Docker Compose files with consistent indentation and d
 ## Installation
 
 ```bash
-go install github.com/awsqed/docker-compose-formatter@latest
+go install github.com/awsqed/config-formatter@latest
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/awsqed/docker-compose-formatter
-cd docker-compose-formatter
-go build -o docker-compose-formatter
+git clone https://github.com/awsqed/config-formatter
+cd config-formatter
+go build -o config-formatter
 ```
 
 ## Usage
 
 ### Basic Usage
 
-Format a file and print to stdout:
+Format a file and print to stdout (auto-detects format):
 ```bash
-docker-compose-formatter -input docker-compose.yml
+config-formatter -input docker-compose.yml
+config-formatter -input traefik.yml
+```
+
+### Specify Format Type
+
+```bash
+config-formatter -input myfile.yml -type docker-compose
+config-formatter -input myfile.yml -type traefik
 ```
 
 ### Write to Output File
 
 ```bash
-docker-compose-formatter -input docker-compose.yml -output formatted-docker-compose.yml
+config-formatter -input docker-compose.yml -output formatted.yml
 ```
 
 ### Format In-Place
 
 ```bash
-docker-compose-formatter -input docker-compose.yml -w
+config-formatter -input docker-compose.yml -w
 ```
 
 ### Custom Indentation
 
 ```bash
-docker-compose-formatter -input docker-compose.yml -indent 4
+config-formatter -input traefik.yml -indent 4
 ```
 
 ### Check if File is Formatted
 
 ```bash
-docker-compose-formatter -input docker-compose.yml -check
+config-formatter -input docker-compose.yml -check
 ```
 
 This will exit with code 0 if the file is formatted, or 1 if it needs formatting.
 
 ## Command-Line Flags
 
-- `-input` (required): Input docker-compose file path
+- `-input` (required): Input config file path
 - `-output`: Output file path (if not specified, prints to stdout)
 - `-w`: Write result to source file instead of stdout
 - `-indent`: Number of spaces for indentation (default: 2)
 - `-check`: Check if file is formatted without making changes
+- `-type`: Formatter type to use (`docker-compose`, `traefik`). Auto-detected if not specified
 
-## Directive Ordering
+## Supported Formats
 
-The formatter applies consistent ordering to directives:
+### Docker Compose
 
-### Top-Level Directives
+Formats Docker Compose files with best-practice directive ordering.
+
+**Top-Level Directives:**
 1. `version`
 2. `name`
 3. `networks`
@@ -85,7 +98,7 @@ The formatter applies consistent ordering to directives:
 6. `secrets`
 7. `services` (placed last as it's typically the longest section)
 
-### Service-Level Directives
+**Service-Level Directives:**
 1. `image`
 2. `build`
 3. `container_name`
@@ -101,9 +114,7 @@ The formatter applies consistent ordering to directives:
 13. `depends_on`
 14. And many more...
 
-Keys not in the predefined order are sorted alphabetically within their group.
-
-## Example
+**Example:**
 
 Before formatting:
 ```yaml
@@ -115,10 +126,6 @@ services:
     volumes:
       - ./html:/usr/share/nginx/html
     restart: always
-  api:
-    image: node:18
-    ports:
-      - "3000:3000"
 networks:
   default:
 ```
@@ -127,6 +134,7 @@ After formatting:
 ```yaml
 networks:
   default:
+
 services:
   web:
     image: nginx:latest
@@ -135,28 +143,53 @@ services:
     volumes:
       - ./html:/usr/share/nginx/html
     restart: always
-
-  api:
-    image: node:18
-    ports:
-      - "3000:3000"
 ```
 
-Note the improvements:
-- Top-level sections reordered (networks before services)
-- Services have proper directive ordering
-- Empty line added between services
-- Consistent indentation throughout
+### Traefik
+
+Formats Traefik configuration files with logical grouping and ordering.
+
+**Top-Level Directives:**
+1. Global configuration (`log`, `api`, `metrics`, etc.)
+2. `entryPoints`
+3. `providers`
+4. `certificatesResolvers`
+5. Protocol sections (`http`, `tcp`, `udp`, `tls`)
+
+**HTTP Section:**
+1. `routers`
+2. `services`
+3. `middlewares`
+4. `serversTransports`
+
+Keys not in the predefined order are sorted alphabetically within their group.
+
+## Architecture
+
+The formatter uses a modular plugin architecture:
+
+- `formatter/formatter.go`: Core interface and base functionality
+- `modules/dockercompose/`: Docker Compose formatter implementation
+- `modules/traefik/`: Traefik formatter implementation
+
+### Adding New Formatters
+
+To add support for a new config format:
+
+1. Create a new module directory under `modules/`
+2. Implement the `Formatter` interface:
+   - `Format(data []byte, indent int) ([]byte, error)` - Format the config
+   - `Name() string` - Return formatter name
+   - `CanHandle(filename string, data []byte) bool` - Detect if file matches this format
+3. Register the formatter in `main.go`
 
 ## Development
 
 ### Running Without Building
 
-Use the Makefile to run without building:
 ```bash
-make run FILE=tailscale.yml
-make run FILE=vaultwarden.yml ARGS="-check"
-make run FILE=example-docker-compose.yml ARGS="-w"
+go run main.go -input compose.yml
+go run main.go -input traefik.yml -type traefik
 ```
 
 ### Building for Multiple Platforms
@@ -180,11 +213,6 @@ make help
 
 ### Testing
 
-Run with the included example file:
-```bash
-go run main.go -input example-docker-compose.yml
-```
-
 Run tests:
 ```bash
 make test
@@ -193,6 +221,12 @@ make test
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+To contribute a new formatter module:
+1. Implement the `Formatter` interface
+2. Add detection logic in `CanHandle()`
+3. Define format-specific ordering rules
+4. Update this README with format documentation
 
 ## License
 

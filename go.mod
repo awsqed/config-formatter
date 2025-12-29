@@ -1,4 +1,4 @@
-module github.com/awsqed/docker-compose-formatter
+module github.com/awsqed/config-formatter
 
 go 1.25.5
 

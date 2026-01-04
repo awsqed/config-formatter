@@ -2,6 +2,7 @@ package dockercompose
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/awsqed/config-formatter/formatter"
@@ -62,6 +63,11 @@ func (f *DockerComposeFormatter) Format(data []byte, indent int) ([]byte, error)
 
 // formatNode recursively formats nodes in the YAML tree
 func (f *DockerComposeFormatter) formatNode(node *yaml.Node, isRoot bool) {
+	f.formatNodeWithContext(node, isRoot, "")
+}
+
+// formatNodeWithContext recursively formats nodes with parent key tracking
+func (f *DockerComposeFormatter) formatNodeWithContext(node *yaml.Node, isRoot bool, parentKey string) {
 	if node == nil {
 		return
 	}
@@ -71,15 +77,28 @@ func (f *DockerComposeFormatter) formatNode(node *yaml.Node, isRoot bool) {
 		f.sortMappingNode(node, isRoot)
 	}
 
+	// Apply value normalization AFTER sorting, BEFORE recursion
+	f.normalizeValues(node, parentKey)
+
 	// Recursively format child nodes
 	// Check if this is the root document node
 	if isRoot && node.Kind == yaml.DocumentNode && len(node.Content) > 0 {
-		f.formatNode(node.Content[0], true)
+		f.formatNodeWithContext(node.Content[0], true, "")
 		return
 	}
 
-	for _, child := range node.Content {
-		f.formatNode(child, false)
+	// For mapping nodes, track key names when recursing into values
+	if node.Kind == yaml.MappingNode {
+		for i := 0; i < len(node.Content); i += 2 {
+			keyNode := node.Content[i]
+			valueNode := node.Content[i+1]
+			f.formatNodeWithContext(valueNode, false, keyNode.Value)
+		}
+	} else {
+		// For sequences and other nodes, don't update parent key
+		for _, child := range node.Content {
+			f.formatNodeWithContext(child, false, parentKey)
+		}
 	}
 }
 
@@ -178,6 +197,181 @@ func addServiceSpacing(servicesNode *yaml.Node) {
 			}
 		}
 	}
+}
+
+// normalizeEnvironment converts environment array to map with smart quoting
+func (f *DockerComposeFormatter) normalizeEnvironment(node *yaml.Node) {
+	// Only process sequence nodes (arrays)
+	if node.Kind != yaml.SequenceNode {
+		return
+	}
+
+	// Parse all array items as KEY=VALUE pairs
+	envMap := make(map[string]string)
+	var keys []string // Preserve order
+
+	for _, item := range node.Content {
+		if item.Kind != yaml.ScalarNode {
+			continue // Skip non-scalar items
+		}
+
+		key, value, ok := parseEnvVar(item.Value)
+		if !ok {
+			continue // Skip malformed entries
+		}
+
+		if _, exists := envMap[key]; !exists {
+			keys = append(keys, key)
+		}
+		envMap[key] = value
+	}
+
+	// Only transform if we successfully parsed at least one entry
+	if len(envMap) == 0 {
+		return
+	}
+
+	// Convert node to MappingNode
+	node.Kind = yaml.MappingNode
+	node.Tag = "!!map"
+	node.Style = 0 // Default style
+
+	// Build new Content with key-value pairs
+	newContent := make([]*yaml.Node, 0, len(keys)*2)
+
+	for _, key := range keys {
+		value := envMap[key]
+
+		// Create key node (always unquoted)
+		keyNode := &yaml.Node{
+			Kind:  yaml.ScalarNode,
+			Tag:   "!!str",
+			Value: key,
+			Style: 0,
+		}
+
+		// Create value node with smart quoting
+		valueNode := &yaml.Node{
+			Kind:  yaml.ScalarNode,
+			Tag:   "!!str",
+			Value: value,
+		}
+
+		// Apply smart quoting
+		if shouldQuoteValue(value) {
+			valueNode.Style = yaml.DoubleQuotedStyle
+		} else {
+			valueNode.Style = 0 // Unquoted
+		}
+
+		newContent = append(newContent, keyNode, valueNode)
+	}
+
+	node.Content = newContent
+}
+
+// normalizePorts ensures all port strings are quoted
+func (f *DockerComposeFormatter) normalizePorts(node *yaml.Node) {
+	// Only process sequence nodes (arrays)
+	if node.Kind != yaml.SequenceNode {
+		return
+	}
+
+	// Force quoting on all scalar port entries
+	for _, item := range node.Content {
+		if item.Kind == yaml.ScalarNode {
+			// Ensure it's tagged as string and quoted
+			item.Tag = "!!str"
+			item.Style = yaml.DoubleQuotedStyle
+		}
+	}
+}
+
+// normalizeValues dispatches to specific normalizers based on parent key
+func (f *DockerComposeFormatter) normalizeValues(node *yaml.Node, parentKey string) {
+	switch parentKey {
+	case "environment":
+		f.normalizeEnvironment(node)
+	case "ports":
+		f.normalizePorts(node)
+	// Add other cases as needed
+	}
+}
+
+// parseEnvVar splits "KEY=VALUE" into key and value
+// Returns (key, value, true) on success, ("", "", false) on malformed input
+func parseEnvVar(envStr string) (key, value string, ok bool) {
+	// Find first '=' to split key and value
+	idx := strings.Index(envStr, "=")
+	if idx == -1 {
+		return "", "", false
+	}
+
+	key = envStr[:idx]
+	value = envStr[idx+1:] // Everything after first '='
+
+	// Key must not be empty
+	if key == "" {
+		return "", "", false
+	}
+
+	return key, value, true
+}
+
+// isNumericLike checks if value looks like a number (int/float)
+func isNumericLike(value string) bool {
+	// Pure integer
+	if _, err := strconv.ParseInt(value, 10, 64); err == nil {
+		return true
+	}
+
+	// Float
+	if _, err := strconv.ParseFloat(value, 64); err == nil {
+		return true
+	}
+
+	return false
+}
+
+// shouldQuoteValue determines if a value needs quoting based on content
+func shouldQuoteValue(value string) bool {
+	// Empty values should be quoted
+	if value == "" {
+		return true
+	}
+
+	// Quote if contains spaces
+	if strings.ContainsAny(value, " \t") {
+		return true
+	}
+
+	// Quote if looks purely numeric (to prevent type coercion)
+	if isNumericLike(value) {
+		return true
+	}
+
+	// Quote if contains special YAML characters
+	specialChars := "{}[],:&*#?|-<>=!%@\\"
+	if strings.ContainsAny(value, specialChars) {
+		return true
+	}
+
+	// Quote if starts with quote character
+	if strings.HasPrefix(value, "\"") || strings.HasPrefix(value, "'") {
+		return true
+	}
+
+	// Quote YAML boolean-like values to preserve as strings
+	lowerValue := strings.ToLower(value)
+	yamlBools := []string{"true", "false", "yes", "no", "on", "off", "y", "n"}
+	for _, b := range yamlBools {
+		if lowerValue == b {
+			return true
+		}
+	}
+
+	// Otherwise, safe to leave unquoted
+	return false
 }
 
 // getKeyOrder returns the sort order for docker-compose keys

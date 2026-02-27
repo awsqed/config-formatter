@@ -1,0 +1,132 @@
+name: Config Formatter
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  release:
+    types: [ published ]
+
+jobs:
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: '1.26'
+
+    - name: Cache Go modules
+      uses: actions/cache@v5
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Verify dependencies
+      run: go mod verify
+
+    - name: Run tests
+      run: go test -v ./...
+
+    - name: Run go vet
+      run: go vet ./...
+
+    - name: Check formatting
+      run: |
+        if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+          echo "Code is not formatted properly:"
+          gofmt -s -l .
+          exit 1
+        fi
+
+  build:
+    name: Build
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+        exclude:
+          - goos: windows
+            goarch: arm64
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: '1.26'
+
+    - name: Cache Go modules
+      uses: actions/cache@v5
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Build binary
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+      run: |
+        mkdir -p dist
+        if [ "${{ matrix.goos }}" = "windows" ]; then
+          go build -ldflags "-X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S')" -o dist/config-formatter-${{ matrix.goos }}-${{ matrix.goarch }}.exe .
+        else
+          go build -ldflags "-X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S')" -o dist/config-formatter-${{ matrix.goos }}-${{ matrix.goarch }} .
+        fi
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v7
+      with:
+        name: config-formatter-${{ matrix.goos }}-${{ matrix.goarch }}
+        path: dist/
+
+  release:
+    name: Release
+    if: github.event_name == 'release'
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v8
+      with:
+        path: artifacts/
+
+    - name: Create release assets
+      run: |
+        mkdir -p release
+        cd artifacts
+        for dir in */; do
+          cd "$dir"
+          if [[ $dir == *windows* ]]; then
+            zip -r "../../release/config-formatter-${dir%/}.zip" *
+          else
+            tar -czf "../../release/config-formatter-${dir%/}.tar.gz" *
+          fi
+          cd ..
+        done
+
+    - name: Upload release assets
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ./release/config-formatter-linux-amd64.tar.gz
+        asset_name: config-formatter-linux-amd64.tar.gz
+        asset_content_type: application/gzip

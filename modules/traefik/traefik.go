@@ -163,13 +163,13 @@ func getKeyOrder(key string, isTopLevel bool) int {
 	// Top-level Traefik configuration keys order
 	topLevelOrder := map[string]int{
 		// Global configuration
-		"global":     1,
-		"log":        2,
-		"accessLog":  3,
-		"api":        4,
-		"ping":       5,
-		"metrics":    6,
-		"tracing":    7,
+		"global":       1,
+		"log":          2,
+		"accessLog":    3,
+		"api":          4,
+		"ping":         5,
+		"metrics":      6,
+		"tracing":      7,
 		"hostResolver": 8,
 
 		// Entry points and providers
@@ -214,83 +214,83 @@ func getKeyOrder(key string, isTopLevel bool) int {
 	// Router configuration keys order (applies to http/tcp routers)
 	// Based on official docs: entryPoints, rule, priority, service, middlewares, tls, plus newer fields
 	routerOrder := map[string]int{
-		"entryPoints": 1,
-		"rule":        2,
-		"ruleSyntax":  3,
-		"priority":    4,
-		"service":     5,
-		"middlewares": 6,
-		"tls":         7,
-		"parentRefs":  8,
+		"entryPoints":   1,
+		"rule":          2,
+		"ruleSyntax":    3,
+		"priority":      4,
+		"service":       5,
+		"middlewares":   6,
+		"tls":           7,
+		"parentRefs":    8,
 		"observability": 9,
 	}
 
 	// Service configuration keys order
 	// Official service types: loadBalancer, weighted, mirroring, failover, highestRandomWeight
 	serviceOrder := map[string]int{
-		"loadBalancer":          1,
-		"weighted":              2,
-		"mirroring":             3,
-		"failover":              4,
-		"highestRandomWeight":   5,
+		"loadBalancer":        1,
+		"weighted":            2,
+		"mirroring":           3,
+		"failover":            4,
+		"highestRandomWeight": 5,
 	}
 
 	// LoadBalancer configuration keys order
 	// Official properties: servers, strategy, healthCheck, passiveHealthCheck, sticky, serversTransport, passHostHeader, responseForwarding
 	loadBalancerOrder := map[string]int{
-		"servers":             1,
-		"strategy":            2,
-		"healthCheck":         3,
-		"passiveHealthCheck":  4,
-		"sticky":              5,
-		"serversTransport":    6,
-		"passHostHeader":      7,
-		"responseForwarding":  8,
+		"servers":            1,
+		"strategy":           2,
+		"healthCheck":        3,
+		"passiveHealthCheck": 4,
+		"sticky":             5,
+		"serversTransport":   6,
+		"passHostHeader":     7,
+		"responseForwarding": 8,
 	}
 
 	// Middleware configuration keys order
 	// Organized by middleware type: path modification → filtering → transformation → auth → advanced
 	middlewareOrder := map[string]int{
 		// Path modification middlewares (1-10)
-		"addPrefix":          1,
-		"stripPrefix":        2,
-		"stripPrefixRegex":   3,
-		"replacePath":        4,
-		"replacePathRegex":   5,
+		"addPrefix":        1,
+		"stripPrefix":      2,
+		"stripPrefixRegex": 3,
+		"replacePath":      4,
+		"replacePathRegex": 5,
 
 		// Chaining and filtering (10-20)
-		"chain":              10,
-		"ipWhiteList":        11, // Deprecated, kept for backward compatibility
-		"ipAllowList":        12,
+		"chain":       10,
+		"ipWhiteList": 11, // Deprecated, kept for backward compatibility
+		"ipAllowList": 12,
 
 		// Headers and errors (20-30)
-		"headers":            20,
-		"errors":             21,
+		"headers": 20,
+		"errors":  21,
 
 		// Rate limiting and circuit breaking (30-40)
-		"rateLimit":          30,
-		"circuitBreaker":     31,
-		"inFlightReq":        32,
+		"rateLimit":      30,
+		"circuitBreaker": 31,
+		"inFlightReq":    32,
 
 		// Redirects (40-50)
-		"redirectRegex":      40,
-		"redirectScheme":     41,
+		"redirectRegex":  40,
+		"redirectScheme": 41,
 
 		// Authentication (50-60)
-		"basicAuth":          50,
-		"digestAuth":         51,
-		"forwardAuth":        52,
+		"basicAuth":   50,
+		"digestAuth":  51,
+		"forwardAuth": 52,
 
 		// Content processing (60-70)
-		"buffering":          60,
-		"compress":           61,
-		"contentType":        62,
-		"grpcWeb":            63,
+		"buffering":   60,
+		"compress":    61,
+		"contentType": 62,
+		"grpcWeb":     63,
 
 		// TLS and advanced (70-80)
-		"passTLSClientCert":  70,
-		"retry":              71,
-		"plugin":             80, // Custom plugin middleware
+		"passTLSClientCert": 70,
+		"retry":             71,
+		"plugin":            80, // Custom plugin middleware
 	}
 
 	// Entry point configuration keys order

@@ -1,7 +1,7 @@
-# Docker Compose Formatter Makefile
+# Config Formatter Makefile
 
 # Binary name
-BINARY_NAME=docker-compose-formatter
+BINARY_NAME=config-formatter
 VERSION?=dev
 BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
 LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)"

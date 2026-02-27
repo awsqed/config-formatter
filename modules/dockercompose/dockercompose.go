@@ -294,7 +294,7 @@ func (f *DockerComposeFormatter) normalizeValues(node *yaml.Node, parentKey stri
 		f.normalizeEnvironment(node)
 	case "ports":
 		f.normalizePorts(node)
-	// Add other cases as needed
+		// Add other cases as needed
 	}
 }
 
@@ -556,10 +556,10 @@ func getKeyOrder(key string, isTopLevel bool) int {
 
 		// GPU & AI/ML Support (225-240)
 		// GPU access and AI model configuration
-		"gpus":            225,
-		"models":          230,
-		"provider":        231,
-		"use_api_socket":  232,
+		"gpus":           225,
+		"models":         230,
+		"provider":       231,
+		"use_api_socket": 232,
 
 		// Lifecycle Hooks (240-250)
 		// Post-start and pre-stop hooks
